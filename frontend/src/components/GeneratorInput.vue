@@ -1,4 +1,4 @@
-<script setup>
+liangz1<script setup>
 // 导入Vue的响应式API和工具函数
 import { ref, nextTick } from 'vue'
 // 导入axios用于与后端通信
@@ -13,8 +13,6 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 const textInput = ref('');
 // 图片文件对象
 const imageFile = ref(null);
-// 音频Blob对象（录音）
-const audioBlob = ref(null);
 // 是否正在加载（生成中）状态
 const isLoading = ref(false);
 // 错误消息
@@ -27,12 +25,12 @@ const previewImageUrl = ref('');
 const imagePreviewUrl = ref('');
 // 3D渲染canvas容器引用
 const canvasContainer = ref(null);
-// 是否正在录音
-const isRecording = ref(false);
-// 录音器实例
-let mediaRecorder = null;
-// 录音数据块数组
-let audioChunks = [];
+// 拖拽状态
+const isDragOver = ref(false);
+// 拖拽计数器，用于正确处理dragenter和dragleave事件
+const dragCounter = ref(0);
+// 用于存储当前的请求，以便可以取消它
+const currentRequest = ref(null);
 
 // -------------------- 文件和音频处理函数 --------------------
 /**
@@ -46,54 +44,114 @@ const handleImageUpload = (event) => {
     imagePreviewUrl.value = '';
     return;
   }
+  processImageFile(file);
+};
+
+/**
+ * 处理拖拽进入事件
+ * @param {DragEvent} event - 拖拽事件
+ */
+const handleDragEnter = (event) => {
+  event.preventDefault();
+  dragCounter.value++;
+  isDragOver.value = true;
+};
+
+/**
+ * 处理拖拽事件
+ * @param {DragEvent} event - 拖拽事件
+ */
+const handleDragOver = (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+};
+
+/**
+ * 处理拖拽离开事件
+ * @param {DragEvent} event - 拖拽事件
+ */
+const handleDragLeave = (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  dragCounter.value--;
+  if (dragCounter.value === 0) {
+    isDragOver.value = false;
+  }
+};
+
+/**
+ * 处理拖拽放置事件
+ * @param {DragEvent} event - 拖拽事件
+ */
+const handleDrop = (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  dragCounter.value = 0;
+  isDragOver.value = false;
+
+  const files = event.dataTransfer.files;
+  if (files.length === 0) return;
+
+  // 如果拖入多个文件，只处理第一个
+  if (files.length > 1) {
+    errorMsg.value = '检测到多个文件，仅处理第一个文件。';
+  }
+
+  const file = files[0];
+  processImageFile(file);
+};
+
+/**
+ * 处理图片文件并生成预览
+ * @param {File} file - 图片文件
+ */
+const processImageFile = (file) => {
+  console.log('开始处理图片文件:', file.name, file.type, file.size);
+
+  // 检查文件类型
+  const validTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+  if (!validTypes.includes(file.type)) {
+    errorMsg.value = '文件格式不支持，请上传 JPG、JPEG 或 PNG 格式的图片。';
+    console.error('不支持的文件类型:', file.type);
+    return;
+  }
+
+  // 检查文件大小（限制为10MB）
+  if (file.size > 10 * 1024 * 1024) {
+    errorMsg.value = '文件大小超过限制（10MB），请上传较小的图片。';
+    console.error('文件大小超过限制:', file.size);
+    return;
+  }
+
   imageFile.value = file;
+  console.log('imageFile 已设置:', imageFile.value);
+
   // 使用FileReader生成本地预览图
   const reader = new FileReader();
   reader.onload = (e) => {
     imagePreviewUrl.value = e.target.result;
+    console.log('imagePreviewUrl 已设置');
+  };
+  reader.onerror = (e) => {
+    console.error('读取文件时出错:', e);
+    errorMsg.value = '读取文件时出错，请重新上传图片。';
   };
   reader.readAsDataURL(file);
+
+  // 清除之前的错误信息
+  errorMsg.value = '';
 };
 
 /**
- * 切换录音状态（开始/停止录音）
- * 录音结束后生成音频Blob对象
+ * 取消已上传的图片
  */
-const toggleRecording = async () => {
-  if (isRecording.value) {
-    // 停止录音
-    mediaRecorder.stop();
-    isRecording.value = false;
-    console.log('录音结束');
-  } else {
-    // 开始录音
-    try {
-      // 1. 获取麦克风权限
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      // 2. 创建MediaRecorder实例
-      mediaRecorder = new MediaRecorder(stream);
-      audioChunks = []; // 清空之前的录音块
-      // 3. 收集音频数据
-      mediaRecorder.ondataavailable = (event) => {
-        audioChunks.push(event.data);
-      };
-      // 4. 停止时合成Blob对象
-      mediaRecorder.onstop = () => {
-        audioBlob.value = new Blob(audioChunks, { type: 'audio/wav' });
-        console.log('录音文件已生成:', audioBlob.value);
-        // 停止媒体流，关闭麦克风指示灯
-        stream.getTracks().forEach(track => track.stop());
-      };
-      // 5. 开始录制并更新状态
-      mediaRecorder.start();
-      isRecording.value = true;
-      console.log('录音开始...');
-    } catch (error) {
-      console.error('无法获取麦克风权限:', error);
-      alert('无法获取麦克风权限，请检查浏览器设置。');
-    }
-  }
+const cancelImageUpload = () => {
+  imageFile.value = null;
+  imagePreviewUrl.value = '';
+  errorMsg.value = ''; // 清除可能存在的错误信息
+  console.log('已取消图片上传');
 };
+
 
 // -------------------- 3D模型渲染函数 --------------------
 /**
@@ -165,7 +223,11 @@ const initAndLoadModel = (tencentModelUrl) => {
 
 // -------------------- 数据提交函数 --------------------
 /**
- * 向后端提交文本、图片（和音频）数据，获取生成的3D模型和预览图
+ * 向后端提交文本、图片数据，获取生成的3D模型和预览图
+ * 根据用户输入自动判断调用哪种模式：
+ * 1. 只有文本时调用"文生模型"接口
+ * 2. 只有图片时调用"图生模型"接口
+ * 注意：文本和图片不能一同上传给混元模型
  */
 const submitData = async () => {
   // 清理状态
@@ -174,17 +236,50 @@ const submitData = async () => {
   previewImageUrl.value = '';
   isLoading.value = true;
 
+  // 检查用户输入
+  const hasText = !!textInput.value && textInput.value.trim().length > 0;
+  const hasImage = !!imageFile.value;
+
+  // 验证输入条件 - 当既没有文本也没有图片时显示错误
+  if (!hasText && !hasImage) {
+    errorMsg.value = '请提供文本描述或上传图片以生成3D模型';
+    isLoading.value = false;
+    return;
+  }
+
+  // 验证不能同时提交文本和图片
+  if (hasText && hasImage) {
+    errorMsg.value = '不能同时提交文本和图片，请只选择其中一种方式生成3D模型';
+    isLoading.value = false;
+    return;
+  }
+
   // 构造FormData对象
   const formData = new FormData();
-  if (textInput.value) formData.append('text', textInput.value);
-  if (imageFile.value) formData.append('image', imageFile.value);
-  // 语音暂不处理
-  // if (audioBlob.value) formData.append('audio', audioBlob.value, 'user_recording.wav');
+  
+  // 根据用户输入调用不同模式
+  if (hasText) {
+    // 文生模型模式
+    formData.append('text', textInput.value);
+    console.log('使用文生模型模式，提交文本:', textInput.value);
+  } else if (hasImage) {
+    // 图生模型模式
+    formData.append('image', imageFile.value);
+    console.log('使用图生模型模式，提交图片文件:', imageFile.value.name, '文件类型:', imageFile.value.type, '文件大小:', imageFile.value.size);
+  }
 
   try {
     // 向后端发送POST请求
+    console.log('正在向后端发送请求...');
+    // 存储当前请求，以便可以取消它
+    const source = axios.CancelToken.source();
+    currentRequest.value = source;
+    
     const response = await axios.post('/api/generate', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
+      headers: { 
+        'Content-Type': 'multipart/form-data'
+      },
+      cancelToken: source.token
     });
 
     console.log('后端返回成功:', response.data);
@@ -201,10 +296,41 @@ const submitData = async () => {
 
   } catch (error) {
     // 错误处理
-    console.error('请求后端出错了:', error);
-    errorMsg.value = '生成失败了，请检查网络或联系我们。';
+    if (axios.isCancel(error)) {
+      // 请求被取消
+      console.log('请求已被取消:', error.message);
+      errorMsg.value = '模型生成已取消';
+    } else {
+      console.error('请求后端出错了:', error);
+      if (error.response) {
+        // 服务器返回了错误响应
+        console.error('错误响应数据:', error.response.data);
+        console.error('错误状态码:', error.response.status);
+        errorMsg.value = `生成失败: ${error.response.data.message || '服务器错误'}`;
+      } else if (error.request) {
+        // 请求已发出但没有收到响应
+        console.error('无响应:', error.request);
+        errorMsg.value = '网络错误，请检查连接';
+      } else {
+        // 其他错误
+        errorMsg.value = '生成失败了，请检查网络或联系我们。';
+      }
+    }
   } finally {
     isLoading.value = false;
+    currentRequest.value = null;
+  }
+};
+
+/**
+ * 中止当前的模型生成请求
+ */
+const cancelModelGeneration = () => {
+  if (currentRequest.value) {
+    currentRequest.value.cancel('用户取消了模型生成');
+    currentRequest.value = null;
+    isLoading.value = false;
+    console.log('已中止模型生成请求');
   }
 };
 </script>
@@ -214,28 +340,44 @@ const submitData = async () => {
     <!-- 顶部标题区 -->
     <header class="station-header">
       <h1>模型创造台 ✨</h1>
-      <p>将你的文字或图片，变为独一无二的3D模型</p>
+      <p>将你的文字或图片(只能二选一喔)，变为独一无二的3D模型</p>
+      <p>耗时可能较长(约3~4min),耐心等待喔</p>
     </header>
 
     <!-- 输入卡片区 -->
     <div class="input-card">
       <!-- 文本输入 -->
       <div class="input-group">
-        <label for="text-prompt">1. 输入你的想法（文字描述）</label>
-        <textarea id="text-prompt" v-model="textInput" placeholder="例如：一个漂浮在云端的魔法图书馆..."></textarea>
+        <label for="text-prompt">1. 文字描述</label>
+        <textarea id="text-prompt" v-model="textInput" placeholder="例如：一个甩着大葱的初音未来..."></textarea>
       </div>
 
       <!-- 图片上传 -->
       <div class="input-group">
-        <label>2. 上传参考图片（可选）</label>
-        <label for="image-upload" class="custom-file-upload">
-          {{ imageFile ? imageFile.name : '选择图片' }}
-        </label>
-        <input id="image-upload" type="file" @change="handleImageUpload" accept="image/*">
+        <label>2. 上传参考图片（.jpg、.jpeg或.png且不超过6M）</label>
+        <div
+          class="drop-zone"
+          :class="{ 'drag-over': isDragOver }"
+          @dragover.prevent="handleDragOver"
+          @dragenter.prevent="handleDragEnter"
+          @dragleave="handleDragLeave"
+          @drop="handleDrop"
+        >
+          <div class="drop-content" :class="{ 'drag-over-content': isDragOver }">
+            <label for="image-upload" class="custom-file-upload">
+              {{ imageFile ? imageFile.name : '选择图片或拖拽图片到此处' }}
+            </label>
+            <input id="image-upload" type="file" @change="handleImageUpload" accept="image/*">
+          </div>
+          <div class="drop-hint">
+            <p>松开鼠标以上传图片</p>
+          </div>
+        </div>
 
         <!-- 图片本地预览 -->
         <div v-if="imagePreviewUrl" class="image-preview-container">
           <img :src="imagePreviewUrl" alt="图片预览" class="image-preview">
+          <button @click="cancelImageUpload" class="cancel-button">×</button>
         </div>
       </div>
     </div>
@@ -245,6 +387,9 @@ const submitData = async () => {
       <button @click="submitData" :disabled="isLoading" class="generate-button">
         <span v-if="isLoading" class="spinner"></span>
         <span>{{ isLoading ? '正在咏唱咒语...' : '开始生成！' }}</span>
+      </button>
+      <button v-if="isLoading" @click="cancelModelGeneration" class="cancel-generation-button">
+        中止生成
       </button>
     </div>
 
@@ -348,7 +493,81 @@ const submitData = async () => {
   color: #c0c0ff;
 }
 
-textarea, .custom-file-upload {
+/* 拖拽区域样式 */
+.drop-zone {
+  position: relative;
+  width: 100%;
+  background: rgba(23, 24, 39, 0.8);
+  border: 2px dashed rgba(132, 118, 255, 0.4);
+  border-radius: 8px;
+  padding: 20px;
+  color: #f0f0f0;
+  font-family: inherit;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+  cursor: pointer;
+  min-height: 80px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.drop-content {
+  text-align: center;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+  transition: all 0.3s ease;
+}
+
+.drop-content.drag-over-content {
+  opacity: 0; /* 当拖拽进入时完全隐藏内容 */
+}
+
+.drop-hint {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(100, 80, 255, 0.95); /* 使用更纯的颜色并增加不透明度 */
+  border-radius: 6px;
+  z-index: 10;
+  pointer-events: none; /* 防止提示层阻挡事件 */
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.drop-zone.drag-over .drop-hint {
+  opacity: 1;
+}
+
+/* 隐藏原始的文件上传按钮 */
+input[type="file"] {
+  display: none;
+}
+
+.custom-file-upload {
+  display: inline-block;
+  cursor: pointer;
+  text-align: center;
+  width: 100%;
+  padding: 10px;
+}
+
+.custom-file-upload:hover {
+  background: rgba(40, 42, 60, 0.9);
+}
+
+textarea {
   width: 100%;
   background: rgba(23, 24, 39, 0.8);
   border: 1px solid rgba(132, 118, 255, 0.4);
@@ -358,54 +577,94 @@ textarea, .custom-file-upload {
   font-family: inherit;
   font-size: 1rem;
   transition: all 0.3s ease;
+  min-height: 100px;
+  resize: vertical;
 }
 
-textarea:focus, input[type="file"]:focus + .custom-file-upload {
+textarea:focus {
   outline: none;
   border-color: #a89fff;
   box-shadow: 0 0 0 3px rgba(132, 118, 255, 0.3);
 }
+
 textarea::-webkit-scrollbar {
   width: 8px;
 }
+
 textarea::-webkit-scrollbar-track {
   background: rgba(23, 24, 39, 0.8);
   border-radius: 10px;
 }
+
 textarea::-webkit-scrollbar-thumb {
   background-color: #5344d9;
   border-radius: 10px;
   border: 2px solid rgba(23, 24, 39, 0.8);
 }
+
 textarea::-webkit-scrollbar-thumb:hover {
   background-color: #8476ff;
 }
-/* 隐藏原始的文件上传按钮 */
-input[type="file"] {
-  display: none;
-}
-.custom-file-upload {
-  display: inline-block;
-  cursor: pointer;
-  text-align: center;
-}
-.custom-file-upload:hover {
-  background: rgba(40, 42, 60, 0.9);
-}
+
 /* 图片预览容器样式，居中显示 */
 .image-preview-container {
-  margin-top: 1.5rem;
+  position: relative;
   display: flex;
   justify-content: center;
+  align-items: center;
+  margin-top: 10px;
 }
+
 .image-preview {
   max-width: 100%;
-  max-height: 250px;
+  max-height: 200px;
   border-radius: 8px;
-  border: 1px solid rgba(132, 118, 255, 0.4);
-  object-fit: contain;
-  background-color: rgba(0, 0, 0, 0.2);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
+
+.cancel-button {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  background-color: rgba(255, 0, 0, 0.8);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.3s ease;
+}
+
+.cancel-button:hover {
+  background-color: rgba(255, 0, 0, 1);
+}
+
+.cancel-generation-button {
+  margin-left: 10px;
+  background-color: rgba(255, 0, 0, 0.8);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  padding: 10px 15px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background-color 0.3s ease;
+}
+
+.cancel-generation-button:hover {
+  background-color: rgba(255, 0, 0, 1);
+}
+
+.cancel-generation-button:disabled {
+  background-color: rgba(255, 0, 0, 0.4);
+  cursor: not-allowed;
+}
+
 .submit-section {
   text-align: center;
 }
@@ -447,6 +706,7 @@ input[type="file"] {
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
+
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
@@ -460,6 +720,7 @@ input[type="file"] {
   margin-top: 1rem;
   overflow: hidden;
 }
+
 .progress-bar::after {
   content: '';
   display: block;
@@ -469,6 +730,7 @@ input[type="file"] {
   border-radius: 2px;
   animation: progress-indeterminate 1.5s ease-in-out infinite;
 }
+
 @keyframes progress-indeterminate {
   0% { transform: translateX(-100%); }
   100% { transform: translateX(250%); }
@@ -480,20 +742,24 @@ input[type="file"] {
   flex-wrap: wrap;
   gap: 1.5rem;
 }
+
 .preview-container, .canvas-container {
   flex: 1;
   min-width: 300px;
 }
+
 .preview-image, .model-canvas {
   width: 100%;
   height: 350px;
   border: 1px solid rgba(132, 118, 255, 0.4);
   border-radius: 12px;
 }
+
 .download-section {
   margin-top: 1.5rem;
   text-align: center;
 }
+
 .download-button {
   padding: 10px 20px;
   font-size: 1rem;
@@ -508,6 +774,7 @@ input[type="file"] {
   text-decoration: none;
   display: inline-block;
 }
+
 .download-button:hover {
   transform: translateY(-2px);
   box-shadow: 0 6px 20px rgba(40, 167, 69, 0.6);
@@ -522,7 +789,35 @@ input[type="file"] {
 .fade-enter-active, .fade-leave-active {
   transition: opacity 0.5s ease;
 }
+
 .fade-enter-from, .fade-leave-to {
   opacity: 0;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .input-card {
+    padding: 1.5rem;
+  }
+
+  .input-group {
+    width: 100%;
+  }
+
+  .station-header h1 {
+    font-size: 2rem;
+  }
+
+  .result-display {
+    flex-direction: column;
+  }
+
+  .preview-container, .canvas-container {
+    min-width: 100%;
+  }
+
+  .preview-image, .model-canvas {
+    height: 250px;
+  }
 }
 </style>
