@@ -3,6 +3,9 @@
 ## 赛题选择
 
 本项目选择参赛赛题为：**智享生活**
+![文生模型](./README/4614304dc1123b344b2c7e9b7e151c3e.png)
+
+![图生模型](./README/0ec86cd0fc491a518f1621b694ce2db7.png)
 
 ## 项目创意
 
@@ -109,7 +112,7 @@ dut-aigc-project/
    # 腾讯云混元AI密钥
    TENCENT_SECRET_ID=your_secret_id
    TENCENT_SECRET_KEY=your_secret_key
-
+   
    # 硅基流动 deepseek-r1 API 密钥
    SILICONFLOW_API_KEY=your_siliconflow_api_key
    ```
@@ -139,7 +142,7 @@ dut-aigc-project/
    # Windows
    venv\Scripts\activate
    # Linux
-   # source venv/bin/activate
+   source venv/bin/activate
    ```
 
 2. 启动Flask服务:
