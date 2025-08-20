@@ -76,7 +76,7 @@ dut-aigc-project/
 
 ### 前端环境
 - Node.js 22.13.0
-- npm 
+- npm 11.5.2
 
 ## 安装与配置
 
