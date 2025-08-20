@@ -71,12 +71,12 @@ dut-aigc-project/
 ## 环境要求
 
 ### 后端环境
-- Python 3.10+
+- Python 3.12.3
 - 腾讯云账号及API密钥
 
 ### 前端环境
-- Node.js 16+
-- npm 或 yarn
+- Node.js 22.13.0
+- npm 
 
 ## 安装与配置
 
@@ -110,9 +110,7 @@ dut-aigc-project/
    其中 SILICONFLOW_API_KEY 为你在硅基流动平台注册获得的 API Key，用于调用 deepseek-r1 文本增强服务。
 
 ### 前端配置
-1. Node.js  v22.13.0 及以上版本
-
-2. 安装依赖：
+安装依赖：
    ```bash
    cd frontend
    npm install
