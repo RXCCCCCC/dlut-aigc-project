@@ -153,6 +153,7 @@ dut-aigc-project/
 
 2. 启动开发服务器:
    ```bash
+   chmod +x /root/workspace/dlut-aigc-project/frontend/node_modules/.bin/vite #linux需要额外进行
    npm run dev
    ```
    前端服务将运行在 `http://localhost:5173`
