@@ -1,18 +1,47 @@
-# 3D模型生成应用
+# 3D模型创造器! - 智享生活赛题项目
 
-这是一个基于AI的3D模型生成应用，用户可以通过输入文字描述或上传图片来生成对应的3D模型。
+## 赛题选择
 
-## 项目概述
+本项目选择参赛赛题为：**智享生活**
 
-本项目采用前后端分离架构，前端使用Vue 3 + Vite + three.js构建，后端使用Python Flask框架，并集成腾讯云AI3D(hunyuan-to-3d)服务来生成3D模型。
+## 项目创意
 
-### 技术栈
+### 解决的实际问题
+在当前数字化时代，3D模型在各个领域都有广泛应用，包括电商展示、游戏开发、室内设计、教育演示等。然而，传统3D建模需要专业技能和大量时间，普通用户难以快速创建所需的3D模型。本项目旨在解决这一问题，让普通用户也能轻松生成高质量的3D模型。
 
-- 前端: Vue 3 + Vite + three.js
-- 后端: Python Flask
-- 云服务: 腾讯云AI3D(hunyuan-to-3d)服务
+### 创意来源
+项目灵感来源于AI生成技术的快速发展，特别是多模态AI在文本到图像、图像到3D等任务上的突破。我们希望利用这些先进技术，打造一个简单易用的3D模型生成平台，让用户通过简单的文字描述或图片上传就能获得精美的3D模型。
 
-## 项目结构
+### 目标用户
+- 电商平台商家：快速生成商品3D展示模型
+- 教育工作者：创建教学用的3D模型
+- 内容创作者：为视频、文章配图制作3D素材
+- 游戏开发者：快速原型设计
+- 普通用户：制作个性化3D模型
+
+## 已实现功能
+
+### 核心功能
+1. **文本生成3D模型**：用户输入文字描述，系统自动生成相应的3D模型
+2. **图片生成3D模型**：用户上传图片，系统根据图片内容生成3D模型
+3. **3D模型预览**：在浏览器中实时交互式预览生成的3D模型
+4. **模型下载**：支持下载生成的GLB格式3D模型文件
+
+### 技术特色
+1. **AI文本增强**：使用DeepSeek-R1模型对用户输入的简单描述进行增强，生成更适合3D建模的详细描述
+2. **多模态AI支持**：集成腾讯云混元AI的文生3D和图生3D能力
+3. **实时3D渲染**：基于Three.js实现浏览器端的3D模型实时渲染和交互
+4. **语音输入支持**：提供语音识别功能，方便用户通过语音输入文本描述
+
+### 用户体验优化
+1. **直观的UI界面**：简洁美观的用户界面，操作流程清晰
+2. **拖拽上传**：支持文件拖拽上传，提升操作便捷性
+3. **实时反馈**：提供加载状态提示和错误信息反馈
+4. **响应式设计**：适配不同屏幕尺寸的设备
+
+## 运行与部署指南
+
+### 项目结构
 
 ```
 dut-aigc-project/
@@ -42,7 +71,7 @@ dut-aigc-project/
 ## 环境要求
 
 ### 后端环境
-- Python 3.7+
+- Python 3.10+
 - 腾讯云账号及API密钥
 
 ### 前端环境
@@ -53,37 +82,37 @@ dut-aigc-project/
 
 ### 后端配置
 
-1. 创建Python虚拟环境:
+1. 创建并激活 Python 虚拟环境：
    ```bash
    cd backend
    python -m venv venv
+   # Windows
+   venv\Scripts\activate
+   # macOS/Linux
+   source venv/bin/activate
    ```
 
-2. 激活虚拟环境:
-   - Windows:
-     ```bash
-     venv\Scripts\activate
-     ```
-   - macOS/Linux:
-     ```bash
-     source venv/bin/activate
-     ```
-
-3. 安装依赖:
+2. 安装依赖：
    ```bash
-   pip install flask flask-cors requests python-dotenv tencentcloud-sdk-python
+   pip install -r requirements.txt
    ```
 
-4. 配置腾讯云API密钥:
-   在[backend/.env](file:///e:/practice/dut-aigc-project/backend/.env)文件中配置您的腾讯云密钥:
+3. 配置 API 密钥：
+   在 backend/.env 文件中填写：
    ```
+   # 腾讯云混元AI密钥
    TENCENT_SECRET_ID=your_secret_id
    TENCENT_SECRET_KEY=your_secret_key
+
+   # 硅基流动 deepseek-r1 API 密钥
+   SILICONFLOW_API_KEY=your_siliconflow_api_key
    ```
+   其中 SILICONFLOW_API_KEY 为你在硅基流动平台注册获得的 API Key，用于调用 deepseek-r1 文本增强服务。
 
 ### 前端配置
+1. Node.js  v22.13.0 及以上版本
 
-1. 安装依赖:
+2. 安装依赖：
    ```bash
    cd frontend
    npm install
