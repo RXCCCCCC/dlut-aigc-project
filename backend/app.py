@@ -2,6 +2,7 @@
 from flask import Response  # 用于自定义HTTP响应（如流式返回大文件）
 import requests  # 用于后端代理请求外部资源
 from flask import Flask, request, jsonify  # Flask核心功能
+from openai import OpenAI  # 用于调用 SiliconFlow deepseek-r1
 from flask_cors import CORS  # 解决跨域问题
 import os  # 读取环境变量
 import json  # 处理JSON数据，腾讯云SDK需要
@@ -159,16 +160,10 @@ def generate_3d_model_with_hunyuan(prompt, image_data=None):
         print(f"发生未知错误: {e}")
         return None
 
+
 # 处理前端生成请求的API路由
 @app.route('/api/generate', methods=['POST'])
 def handle_generation_request():
-    """
-    接收前端的文本和图片，整合为prompt，调用3D生成函数，返回模型和预览图URL。
-    支持两种模式：
-    1. 文生模型：只提交text字段
-    2. 图生模型：只提交image文件
-    注意：不能同时提交text和image
-    """
     print("========================================")
     print("接收到新的生成请求！")
     text_input = request.form.get('text')
@@ -176,46 +171,69 @@ def handle_generation_request():
 
     print(f"接收到的文本参数: {text_input}")
     print(f"接收到的图片参数: {image_file is not None}")
-    
+
     if image_file:
         print(f"图片文件名: {image_file.filename}")
         print(f"图片MIME类型: {image_file.content_type}")
-        # 使用seek和tell获取准确的文件大小
-        image_file.seek(0, 2)  # 移动到文件末尾
-        file_size = image_file.tell()  # 获取文件大小
-        image_file.seek(0)  # 重置文件指针到开始位置
+        image_file.seek(0, 2)
+        file_size = image_file.tell()
+        image_file.seek(0)
         print(f"图片大小: {file_size} 字节")
 
-    # 验证输入参数
     if not text_input and not image_file:
         print("错误：未提供文本或图片参数")
         return jsonify({"status": "error", "message": "请输入文本或上传图片。"}), 400
-    
     if text_input and image_file:
         print("错误：同时提供了文本和图片参数")
         return jsonify({"status": "error", "message": "不能同时提交文本和图片，请只选择其中一种方式生成3D模型。"}), 400
 
-    # 处理输入数据
     image_data = None
-    final_prompt = ""  # 初始化为空字符串
-    
+    final_prompt = ""
     if image_file:
-        # 图生模型模式
-        # 使用seek和tell获取准确的文件大小
-        image_file.seek(0, 2)  # 移动到文件末尾
-        file_size = image_file.tell()  # 获取文件大小
-        image_file.seek(0)  # 重置文件指针到开始位置
-        print(f"接收到图片文件: {image_file.filename}, 大小: {file_size} 字节")
-        # 将图片文件转换为base64编码
+        image_file.seek(0, 2)
+        file_size = image_file.tell()
+        image_file.seek(0)
         image_data = base64.b64encode(image_file.read()).decode('utf-8')
-        print(f"图片数据大小: {len(image_data)} 字符")
-        print(f"图片数据预览（前100字符）: {image_data[:100]}")
-        # 图生模型模式下Prompt必须为空字符串
         final_prompt = ""
     elif text_input:
-        # 文生模型模式
-        final_prompt = text_input
-        print(f"使用文生模型模式，Prompt: {final_prompt}")
+        # 文生模型模式，先用 deepseek-r1 处理
+        try:
+            # 初始化 SiliconFlow 客户端
+            client = OpenAI(
+                api_key=os.getenv('SILICONFLOW_API_KEY'),
+                base_url='https://api.siliconflow.cn/v1'
+            )
+            
+            # 构造更明确的 deepseek-r1 指令
+            system_prompt = (
+                "你是一个3D模型生成助手。请对用户输入的原始文本进行语义纠错和丰富性加工，生成更适合用于3D模型生成的描述性文字。"
+                "要求："
+                "1. 保持原始意图"
+                "2. 增加细节描述，使描述更具体"
+                "3. 使用适合3D建模的术语"
+                "4. 避免使用过于抽象的术语"
+                "5. 只输出交给混元ai进行文生3D模型的描述性文本，避免输出任何多余内容而影响模型生成"
+            )
+            user_prompt = f"原始文本：{text_input}\n请将上述文本优化为适合3D模型生成的描述性文字。注意只输出交给混元ai进行文生3D模型的描述性文本，避免输出任何多余内容而影响模型生成"
+
+            # 调用 SiliconFlow API
+            response = client.chat.completions.create(
+                model="deepseek-ai/DeepSeek-R1",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.7
+            )
+            
+            processed_text = response.choices[0].message.content
+            final_prompt = processed_text
+            print(f"经过 deepseek-r1 处理后的描述: {final_prompt}")
+        except Exception as e:
+            print(f"SiliconFlow deepseek-r1 处理失败: {e}")
+            # 即使文本增强失败，也继续使用原始文本
+            final_prompt = text_input
+            print(f"使用原始文本: {final_prompt}")
 
     print("最终整合的指令(Prompt):", final_prompt)
     print("是否有图片数据:", bool(image_data))
@@ -225,7 +243,6 @@ def handle_generation_request():
     # 调用核心生成函数
     result_data = generate_3d_model_with_hunyuan(final_prompt, image_data)
     if result_data and result_data.get("modelUrl"):
-        # 成功，返回模型和预览图URL
         print("模型生成成功，返回结果给前端")
         return jsonify({
             "status": "success",
@@ -234,7 +251,6 @@ def handle_generation_request():
             "previewImageUrl": result_data.get("previewImageUrl")
         })
     else:
-        # 失败，返回错误
         print("模型生成失败")
         return jsonify({
             "status": "error",
