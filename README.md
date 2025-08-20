@@ -100,7 +100,7 @@ dut-aigc-project/
    ```
 
 3. 配置 API 密钥：
-   在 backend/.env 文件中填写：
+   创建并在 backend/.env 文件中填写：
    ```
    # 腾讯云混元AI密钥
    TENCENT_SECRET_ID=your_secret_id
@@ -109,6 +109,13 @@ dut-aigc-project/
    # 硅基流动 deepseek-r1 API 密钥
    SILICONFLOW_API_KEY=your_siliconflow_api_key
    ```
+
+   **如何获得腾讯云 API 密钥（SecretId 和 SecretKey）：**
+   1. 登录 [腾讯云控制台](https://console.cloud.tencent.com/)。
+   2. 点击右上角头像，选择“访问管理” > “访问密钥”。
+   3. 在“API密钥管理”页面，点击“新建密钥”或查看已有密钥。
+   4. 复制 SecretId 和 SecretKey，分别填入 .env 文件。
+
    其中 SILICONFLOW_API_KEY 为你在硅基流动平台注册获得的 API Key，用于调用 deepseek-r1 文本增强服务。
 
 ### 前端配置
