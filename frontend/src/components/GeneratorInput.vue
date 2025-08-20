@@ -11,6 +11,49 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 // -------------------- 核心状态变量定义 --------------------
 // 文本输入框内容
 const textInput = ref('');
+// 语音识别相关状态
+const isRecording = ref(false);
+const recognitionError = ref('');
+let recognition = null;
+
+// 检查浏览器兼容性
+const isSpeechSupported = 'webkitSpeechRecognition' in window || 'SpeechRecognition' in window;
+
+const startSpeechRecognition = () => {
+  recognitionError.value = '';
+  if (!isSpeechSupported) {
+    recognitionError.value = '当前浏览器不支持语音识别功能。';
+    return;
+  }
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SpeechRecognition();
+  recognition.lang = 'zh-CN';
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  isRecording.value = true;
+  recognition.start();
+  recognition.onresult = (event) => {
+    let transcript = '';
+    for (let i = 0; i < event.results.length; ++i) {
+      transcript += event.results[i][0].transcript;
+    }
+    textInput.value = transcript;
+  };
+  recognition.onerror = (event) => {
+    recognitionError.value = '语音识别失败：' + event.error;
+    isRecording.value = false;
+  };
+  recognition.onend = () => {
+    isRecording.value = false;
+  };
+};
+
+const stopSpeechRecognition = () => {
+  if (recognition) {
+    recognition.stop();
+    isRecording.value = false;
+  }
+};
 // 图片文件对象
 const imageFile = ref(null);
 // 是否正在加载（生成中）状态
@@ -309,17 +352,6 @@ const submitData = async () => {
   }
 };
 
-/**
- * 中止当前的模型生成请求
- */
-const cancelModelGeneration = () => {
-  if (currentRequest.value) {
-    currentRequest.value.cancel('用户取消了模型生成');
-    currentRequest.value = null;
-    isLoading.value = false;
-    console.log('已中止模型生成请求');
-  }
-};
 </script>
 
 <template>
@@ -334,9 +366,33 @@ const cancelModelGeneration = () => {
     <!-- 输入卡片区 -->
     <div class="input-card">
       <!-- 文本输入 -->
-      <div class="input-group">
-        <label for="text-prompt">1. 文字描述</label>
-        <textarea id="text-prompt" v-model="textInput" placeholder="例如：一个甩着大葱的初音未来..."></textarea>
+      <div class="input-group" style="position:relative;">
+        <label for="text-prompt">1. 文字描述(点击输入框右侧麦克风可进行语音输入)</label>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <textarea id="text-prompt" v-model="textInput" placeholder="例如：一个甩着大葱的初音未来..." style="flex:1;"></textarea>
+          <button
+            type="button"
+            class="mic-btn"
+            :disabled="isRecording || !isSpeechSupported"
+            @click="startSpeechRecognition"
+            v-if="!isRecording"
+            title="语音输入"
+          >
+            <span>🎤</span>
+          </button>
+          <button
+            type="button"
+            class="mic-btn recording"
+            @click="stopSpeechRecognition"
+            v-if="isRecording"
+            title="停止录音"
+          >
+            <span>■</span>
+          </button>
+        </div>
+        <div v-if="isRecording" class="recording-tip">正在录音...</div>
+        <div v-if="recognitionError" class="error-tip">{{ recognitionError }}</div>
+        <div v-if="!isSpeechSupported" class="error-tip">当前浏览器不支持语音识别。</div>
       </div>
 
       <!-- 图片上传 -->
@@ -803,5 +859,37 @@ textarea::-webkit-scrollbar-thumb:hover {
   .preview-image, .model-canvas {
     height: 250px;
   }
+}
+/* 麦克风按钮样式和录音提示 */
+.mic-btn {
+  background: #5344d9;
+  color: #fff;
+  border: none;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.mic-btn:disabled {
+  background: #aaa;
+  cursor: not-allowed;
+}
+.mic-btn.recording {
+  background: #ff7b7b;
+}
+.recording-tip {
+  color: #ff7b7b;
+  font-size: 0.95rem;
+  margin-top: 4px;
+}
+.error-tip {
+  color: #ff7b7b;
+  font-size: 0.95rem;
+  margin-top: 4px;
 }
 </style>
