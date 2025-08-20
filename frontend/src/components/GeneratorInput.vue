@@ -29,8 +29,6 @@ const canvasContainer = ref(null);
 const isDragOver = ref(false);
 // 拖拽计数器，用于正确处理dragenter和dragleave事件
 const dragCounter = ref(0);
-// 用于存储当前的请求，以便可以取消它
-const currentRequest = ref(null);
 
 // -------------------- 文件和音频处理函数 --------------------
 /**
@@ -271,15 +269,11 @@ const submitData = async () => {
   try {
     // 向后端发送POST请求
     console.log('正在向后端发送请求...');
-    // 存储当前请求，以便可以取消它
-    const source = axios.CancelToken.source();
-    currentRequest.value = source;
     
     const response = await axios.post('/api/generate', formData, {
       headers: { 
         'Content-Type': 'multipart/form-data'
-      },
-      cancelToken: source.token
+      }
     });
 
     console.log('后端返回成功:', response.data);
@@ -296,29 +290,22 @@ const submitData = async () => {
 
   } catch (error) {
     // 错误处理
-    if (axios.isCancel(error)) {
-      // 请求被取消
-      console.log('请求已被取消:', error.message);
-      errorMsg.value = '模型生成已取消';
+    console.error('请求后端出错了:', error);
+    if (error.response) {
+      // 服务器返回了错误响应
+      console.error('错误响应数据:', error.response.data);
+      console.error('错误状态码:', error.response.status);
+      errorMsg.value = `生成失败: ${error.response.data.message || '服务器错误'}`;
+    } else if (error.request) {
+      // 请求已发出但没有收到响应
+      console.error('无响应:', error.request);
+      errorMsg.value = '网络错误，请检查连接';
     } else {
-      console.error('请求后端出错了:', error);
-      if (error.response) {
-        // 服务器返回了错误响应
-        console.error('错误响应数据:', error.response.data);
-        console.error('错误状态码:', error.response.status);
-        errorMsg.value = `生成失败: ${error.response.data.message || '服务器错误'}`;
-      } else if (error.request) {
-        // 请求已发出但没有收到响应
-        console.error('无响应:', error.request);
-        errorMsg.value = '网络错误，请检查连接';
-      } else {
-        // 其他错误
-        errorMsg.value = '生成失败了，请检查网络或联系我们。';
-      }
+      // 其他错误
+      errorMsg.value = '生成失败了，请检查网络或联系我们。';
     }
   } finally {
     isLoading.value = false;
-    currentRequest.value = null;
   }
 };
 
@@ -387,9 +374,6 @@ const cancelModelGeneration = () => {
       <button @click="submitData" :disabled="isLoading" class="generate-button">
         <span v-if="isLoading" class="spinner"></span>
         <span>{{ isLoading ? '正在咏唱咒语...' : '开始生成！' }}</span>
-      </button>
-      <button v-if="isLoading" @click="cancelModelGeneration" class="cancel-generation-button">
-        中止生成
       </button>
     </div>
 
