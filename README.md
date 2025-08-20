@@ -88,12 +88,14 @@ dut-aigc-project/
    python -m venv venv
    # Windows
    venv\Scripts\activate
-   # macOS/Linux
+   # Linux
    source venv/bin/activate
    ```
 
 2. 安装依赖：
    ```bash
+   cd backend
+   venv\Scripts\activate
    pip install -r requirements.txt
    ```
 
