@@ -134,7 +134,7 @@ dut-aigc-project/
    cd backend
    # Windows
    venv\Scripts\activate
-   # macOS/Linux
+   # Linux
    # source venv/bin/activate
    ```
 
@@ -144,7 +144,7 @@ dut-aigc-project/
    ```
    后端服务将运行在 `http://localhost:5000`
 
-### 启动前端开发服务器
+### 启动前端开发服务器(重新打开一个终端窗口，注意请勿关闭此前已经启动的后端服务)
 
 1. 进入前端目录:
    ```bash
