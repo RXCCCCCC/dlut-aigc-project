@@ -66,12 +66,36 @@ const modelUrl = ref('');
 const previewImageUrl = ref('');
 // 本地图片预览URL
 const imagePreviewUrl = ref('');
+// 图片上传 input 元素引用
+const imageInput = ref(null);
 // 3D渲染canvas容器引用
 const canvasContainer = ref(null);
 // 拖拽状态
 const isDragOver = ref(false);
 // 拖拽计数器，用于正确处理dragenter和dragleave事件
 const dragCounter = ref(0);
+
+// 拖拽上传区域事件绑定对象，isLoading 为 true 时禁用所有拖拽事件，否则正常绑定
+import { computed } from 'vue';
+const dropZoneEvents = computed(() => {
+  if (isLoading.value) {
+    // 禁用所有拖拽相关事件
+    return {
+      dragover: (e) => e.preventDefault(),
+      dragenter: (e) => e.preventDefault(),
+      dragleave: (e) => e.preventDefault(),
+      drop: (e) => e.preventDefault(),
+    };
+  } else {
+    // 正常绑定拖拽处理函数
+    return {
+      dragover: handleDragOver,
+      dragenter: handleDragEnter,
+      dragleave: handleDragLeave,
+      drop: handleDrop,
+    };
+  }
+});
 
 // -------------------- 文件和音频处理函数 --------------------
 /**
@@ -190,6 +214,10 @@ const cancelImageUpload = () => {
   imageFile.value = null;
   imagePreviewUrl.value = '';
   errorMsg.value = ''; // 清除可能存在的错误信息
+  // 重置 input 的值，确保可以重新选择同一图片
+  if (imageInput.value) {
+    imageInput.value.value = '';
+  }
   console.log('已取消图片上传');
 };
 
@@ -369,7 +397,7 @@ const submitData = async () => {
       <div class="input-group" style="position:relative;">
         <label for="text-prompt">1. 文字描述(点击输入框右侧麦克风可进行语音输入)</label>
         <div style="display:flex;align-items:center;gap:8px;">
-          <textarea id="text-prompt" v-model="textInput" placeholder="例如：一个甩着大葱的初音未来..." style="flex:1;"></textarea>
+          <textarea id="text-prompt" v-model="textInput" placeholder="例如：一个双手甩着大葱的初音未来..." style="flex:1;"></textarea>
           <button
             type="button"
             class="mic-btn"
@@ -398,19 +426,17 @@ const submitData = async () => {
       <!-- 图片上传 -->
       <div class="input-group">
         <label>2. 上传参考图片（.jpg、.jpeg或.png且不超过6M）</label>
+        <!-- 拖拽上传区域，事件绑定根据 isLoading 动态切换，优化交互体验 -->
         <div
           class="drop-zone"
-          :class="{ 'drag-over': isDragOver }"
-          @dragover.prevent="handleDragOver"
-          @dragenter.prevent="handleDragEnter"
-          @dragleave="handleDragLeave"
-          @drop="handleDrop"
+          :class="{ 'drag-over': isDragOver, 'drop-zone-disabled': isLoading }"
+          v-on="dropZoneEvents"
         >
           <div class="drop-content" :class="{ 'drag-over-content': isDragOver }">
             <label for="image-upload" class="custom-file-upload">
               {{ imageFile ? imageFile.name : '选择图片或拖拽图片到此处' }}
             </label>
-            <input id="image-upload" type="file" @change="handleImageUpload" accept="image/*">
+            <input id="image-upload" type="file" @change="handleImageUpload" accept="image/*" ref="imageInput">
           </div>
           <div class="drop-hint">
             <p>松开鼠标以上传图片</p>
@@ -420,7 +446,8 @@ const submitData = async () => {
         <!-- 图片本地预览 -->
         <div v-if="imagePreviewUrl" class="image-preview-container">
           <img :src="imagePreviewUrl" alt="图片预览" class="image-preview">
-          <button @click="cancelImageUpload" class="cancel-button">×</button>
+          <!-- 生成中时隐藏取消按钮 -->
+          <button v-if="!isLoading" @click="cancelImageUpload" class="cancel-button">×</button>
         </div>
       </div>
     </div>
@@ -892,4 +919,10 @@ textarea::-webkit-scrollbar-thumb:hover {
   font-size: 0.95rem;
   margin-top: 4px;
 }
+/* 拖拽禁用样式 */
+.drop-zone-disabled {
+  pointer-events: none;
+  opacity: 0.6;
+}
 </style>
+
