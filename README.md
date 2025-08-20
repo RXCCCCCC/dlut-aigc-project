@@ -69,7 +69,7 @@ dut-aigc-project/
 4. 3D模型下载（GLB格式）
 
 ## 环境要求
-
+**该项目仅在windows环境下测试过**
 ### 后端环境
 - Python 3.12.3
 - 腾讯云账号及API密钥
@@ -153,7 +153,6 @@ dut-aigc-project/
 
 2. 启动开发服务器:
    ```bash
-   chmod +x /root/workspace/dlut-aigc-project/frontend/node_modules/.bin/vite #linux需要额外进行
    npm run dev
    ```
    前端服务将运行在 `http://localhost:5173`
