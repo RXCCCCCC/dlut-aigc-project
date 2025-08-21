@@ -72,11 +72,13 @@ dut-aigc-project/
 4. 3D模型下载（GLB格式）
 
 # 项目部署
-该项目已部署在阿里云云服务器ECS上,你可以在该网址直接体验: [模型创造台 ✨](http://101.132.21.134:5173/)
-如果网址失效了,你可以尝试在本地运行它,要求如下:
+**该项目已部署在阿里云云服务器ECS上,你可以在该网址直接体验: [模型创造台 ✨](http://101.132.21.134:5173/)**
+
+**Ps:由于我的云服务器暂时未配置 HTTPS,语音输入功能暂不可用,若想使用语音输入功能,请进行本地部署.**
+
+**如果网址失效了,或者你生成模型时与他人产生冲突,你可以尝试在本地运行它,要求如下:**
 
 ## 环境要求
-**该项目仅在windows环境下测试过**
 ### 后端环境
 - Python 3.12.3
 - 腾讯云账号及API密钥
@@ -89,26 +91,25 @@ dut-aigc-project/
 
 ### 后端配置
 
-1. 创建并激活 Python 虚拟环境：
+1. 创建 Python 虚拟环境：
    ```bash
    cd backend
    python -m venv venv
+   ```
+   
+2. 激活Python 虚拟环境并安装依赖：
+   ```bash
    # Windows
    venv\Scripts\activate
    # Linux
    source venv/bin/activate
-   ```
-
-2. 安装依赖：
-   ```bash
-   cd backend
-   venv\Scripts\activate
    pip install -r requirements.txt
    ```
-
+   
 3. 配置 API 密钥：
-   创建并在 backend/.env 文件中填写：
-   ```
+   创建backend/.env 文件并在其中填写：
+   
+   ```bash
    # 腾讯云混元AI密钥
    TENCENT_SECRET_ID=your_secret_id
    TENCENT_SECRET_KEY=your_secret_key
@@ -116,14 +117,17 @@ dut-aigc-project/
    # 硅基流动 deepseek-r1 API 密钥
    SILICONFLOW_API_KEY=your_siliconflow_api_key
    ```
-
-   **如何获得腾讯云 API 密钥（SecretId 和 SecretKey）：**
+   
+   **如何获得腾讯云 API 密钥（SecretId 和 SecretKey,必选）：**
+   
    1. 登录 [腾讯云控制台](https://console.cloud.tencent.com/)。
    2. 点击右上角头像，选择“访问管理” > “访问密钥”。
    3. 在“API密钥管理”页面，点击“新建密钥”或查看已有密钥。
    4. 复制 SecretId 和 SecretKey，分别填入 .env 文件。
-
-   其中 SILICONFLOW_API_KEY 为你在硅基流动平台注册获得的 API Key，用于调用 deepseek-r1 文本增强服务。
+   
+   **SILICONFLOW_API_KEY (可选)**
+   
+   你在[硅基流动平台]([SiliconFlow硅基流动官网](https://www.siliconflowcn.com/))注册获得的 API Key，用于**调用 deepseek-r1 文本增强服务**。
 
 ### 前端配置
 安装依赖：
@@ -198,11 +202,6 @@ dut-aigc-project/
 - 参数:
   - url: 真实模型文件URL
 - 说明: 用于代理腾讯云模型文件，解决跨域问题
-
-## 安全注意事项
-
-- 请妥善保管您的腾讯云API密钥，不要将其提交到代码仓库中
-- [.env](file:///e:/practice/dut-aigc-project/backend/.env)文件已被添加到[.gitignore](file:///e:/practice/dut-aigc-project/frontend/.gitignore)中，避免意外提交
 
 ## 项目规范
 
