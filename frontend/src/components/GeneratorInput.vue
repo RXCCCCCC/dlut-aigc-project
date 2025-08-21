@@ -325,7 +325,7 @@ const submitData = async () => {
 
   // 构造FormData对象
   const formData = new FormData();
-  
+
   // 根据用户输入调用不同模式
   if (hasText) {
     // 文生模型模式
@@ -340,9 +340,9 @@ const submitData = async () => {
   try {
     // 向后端发送POST请求
     console.log('正在向后端发送请求...');
-    
+
     const response = await axios.post('/api/generate', formData, {
-      headers: { 
+      headers: {
         'Content-Type': 'multipart/form-data'
       }
     });
@@ -397,7 +397,7 @@ const submitData = async () => {
       <div class="input-group" style="position:relative;">
         <label for="text-prompt">1. 文字描述(点击输入框右侧麦克风可进行语音输入)</label>
         <div style="display:flex;align-items:center;gap:8px;">
-          <textarea id="text-prompt" v-model="textInput" placeholder="例如：一个双手甩着大葱的初音未来..." style="flex:1;"></textarea>
+          <textarea id="text-prompt" v-model="textInput" placeholder="例如：一个唱着歌的初音未来..." style="flex:1;"></textarea>
           <button
             type="button"
             class="mic-btn"
