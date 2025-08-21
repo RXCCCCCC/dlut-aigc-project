@@ -148,6 +148,8 @@ dut-aigc-project/
 2. 启动Flask服务:
    ```bash
    python app.py
+   #如果你运行失败了，请尝试以下命令
+   python -m flask run
    ```
    后端服务将运行在 `http://localhost:5000`
 
@@ -161,6 +163,8 @@ dut-aigc-project/
 2. 启动开发服务器:
    ```bash
    npm run dev
+   # 如果你想部署到云端服务器(我使用的是ubuntu系统)，请使用以下命令启动
+   npm run dev -- --host 0.0.0.0
    ```
    前端服务将运行在 `http://localhost:5173`
 
