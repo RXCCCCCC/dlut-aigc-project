@@ -1,5 +1,5 @@
 # 3D模型创造器! 
-[![Build Status](https://app.travis-ci.com/RXCCCCCC/dlut-aigc-project.svg?token=aVx8CNzgsko1wRvskDJn)](https://app.travis-ci.com/RXCCCCCC/dlut-aigc-project)
+
 ## 项目成果展示
 
 # ![文生模型](./README/4614304dc1123b344b2c7e9b7e151c3e.png)
