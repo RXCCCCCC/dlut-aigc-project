@@ -1,4 +1,9 @@
-   language: ruby
-   rvm:
-    - 2.2
-    - jruby
+# filepath: e:\practice\dut-aigc-project\.travis.yml
+language: python
+python:
+  - "3.12"
+install:
+  - pip install -r backend/requirements.txt
+script:
+  - python --version
+  - pip list
