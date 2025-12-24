@@ -1,11 +1,35 @@
 <script setup>
-import GeneratorInput from './components/GeneratorInput.vue'
+import { ref } from 'vue'
+import { useRouter } from 'vue-router'
+
+const router = useRouter()
+const username = ref(localStorage.getItem('username') || '')
+
+const logout = () => {
+  localStorage.removeItem('access_token')
+  localStorage.removeItem('username')
+  delete window.axiosDefaults
+  username.value = ''
+  router.push({ name: 'Login' })
+}
 </script>
 
 <template>
-  <main>
-    <GeneratorInput />
-  </main>
+  <div id="app">
+    <header class="topnav">
+      <div class="brand">DLUT AIGC</div>
+      <nav>
+        <router-link to="/">生成</router-link>
+        <router-link to="/history">历史</router-link>
+        <span v-if="localStorage.getItem('username')">{{ localStorage.getItem('username') }}</span>
+        <button v-if="localStorage.getItem('access_token')" @click="logout">登出</button>
+        <router-link v-else to="/login">登录</router-link>
+      </nav>
+    </header>
+    <main>
+      <router-view />
+    </main>
+  </div>
 </template>
 
 <style>

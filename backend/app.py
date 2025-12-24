@@ -14,12 +14,232 @@ from dotenv import load_dotenv  # 加载.env环境变量
 from tencentcloud.ai3d.v20250513 import ai3d_client, models  # 新版3D生成接口
 import base64  # 用于图片编码
 
+# 新增：数据库与认证相关
+from flask_sqlalchemy import SQLAlchemy
+from werkzeug.security import generate_password_hash, check_password_hash
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
+from datetime import datetime
+
+# 速率限制
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+
+# 腾讯COS SDK（可选，如果未配置则使用本地存储）
+try:
+    from qcloud_cos import CosConfig, CosS3Client
+    HAS_COS = True
+except Exception:
+    HAS_COS = False
+    CosConfig = None
+    CosS3Client = None
+
 # 加载.env文件中的环境变量
 load_dotenv()
 # 初始化Flask应用
 app = Flask(__name__)
 # 启用CORS，允许前端跨域访问
-CORS(app)
+FRONTEND_ORIGIN = os.getenv('FRONTEND_ORIGIN')
+if FRONTEND_ORIGIN:
+    CORS(app, origins=FRONTEND_ORIGIN, supports_credentials=False)
+else:
+    CORS(app)
+
+# 配置数据库（默认使用项目内 sqlite），可通过环境变量覆盖
+# 在阿里云或其他 Linux 服务器上，建议使用绝对路径，或在环境变量中设置 `DATABASE_URL` 或 `SQLITE_FILE`
+project_root = os.path.abspath(os.path.dirname(__file__))
+# SQLITE_FILE 指定具体 db 文件路径（例如 /var/www/app/data.db），优先使用 DATABASE_URL
+default_db_file = os.getenv('SQLITE_FILE', os.path.join(project_root, 'data.db'))
+db_uri = os.getenv('DATABASE_URL', f"sqlite:///{default_db_file}")
+app.config['SQLALCHEMY_DATABASE_URI'] = db_uri
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+# 对于 SQLite，当在多线程/多进程环境中使用，需要设置 connect_args
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'connect_args': { 'check_same_thread': False },
+    'pool_pre_ping': True
+}
+
+# 确保数据库目录存在并且可写（在阿里云上常见问题是权限或目录缺失）
+db_dir = os.path.dirname(default_db_file)
+if db_dir and not os.path.exists(db_dir):
+    try:
+        os.makedirs(db_dir, exist_ok=True)
+    except Exception as e:
+        print(f"无法创建数据库目录 {db_dir}: {e}")
+
+print(f"Using database URI: {app.config.get('SQLALCHEMY_DATABASE_URI')}")
+
+# JWT 配置
+app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'change-me-in-prod')
+
+# 初始化扩展
+db = SQLAlchemy(app)
+jwt = JWTManager(app)
+
+# 初始化速率限制器（针对IP）
+limiter = Limiter(key_func=get_remote_address, app=app, default_limits=["200 per day", "50 per hour"])
+
+
+# 模型定义：用户和生成历史
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    password_hash = db.Column(db.String(200), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+
+class History(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    prompt = db.Column(db.Text)
+    # 存储方式：provider='local' 或 'cos'，存储路径为 storage_path
+    storage_provider = db.Column(db.String(40), default='local')
+    storage_path = db.Column(db.Text)
+    preview_path = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+# 在启动时创建表（如果不存在）
+with app.app_context():
+    db.create_all()
+
+# 存储相关配置（本地或腾讯 COS）
+STORAGE_PROVIDER = os.getenv('STORAGE_PROVIDER', 'local')  # 'local' or 'cos'
+LOCAL_STORAGE_DIR = os.getenv('LOCAL_STORAGE_DIR', './storage')
+if not os.path.exists(LOCAL_STORAGE_DIR):
+    os.makedirs(LOCAL_STORAGE_DIR, exist_ok=True)
+
+# COS 配置（如果使用）
+COS_SECRET_ID = os.getenv('COS_SECRET_ID')
+COS_SECRET_KEY = os.getenv('COS_SECRET_KEY')
+COS_REGION = os.getenv('COS_REGION', 'ap-guangzhou')
+COS_BUCKET = os.getenv('COS_BUCKET')
+
+cos_client = None
+if STORAGE_PROVIDER == 'cos' and HAS_COS:
+    if COS_SECRET_ID and COS_SECRET_KEY and COS_BUCKET:
+        cos_config = CosConfig(Region=COS_REGION, SecretId=COS_SECRET_ID, SecretKey=COS_SECRET_KEY)
+        cos_client = CosS3Client(cos_config)
+    else:
+        print('COS 配置不完整，回退到本地存储')
+        STORAGE_PROVIDER = 'local'
+
+
+# ---------- 认证接口 (注册 / 登录) ----------
+@app.route('/api/auth/register', methods=['POST'])
+def register():
+    # 输入校验：简单规则，用户名长度 3-32，密码最少 6 位
+    data = request.get_json() or {}
+    username = (data.get('username') or '').strip()
+    password = data.get('password') or ''
+    if not username or not password:
+        return jsonify({'msg': 'username and password required'}), 400
+    if len(username) < 3 or len(username) > 32:
+        return jsonify({'msg': 'username length must be 3-32'}), 400
+    if len(password) < 6:
+        return jsonify({'msg': 'password too short (min 6)'}), 400
+    if User.query.filter_by(username=username).first():
+        return jsonify({'msg': 'username already exists'}), 409
+    user = User(username=username, password_hash=generate_password_hash(password))
+    db.session.add(user)
+    db.session.commit()
+    return jsonify({'msg': 'registered'}), 201
+
+
+@limiter.limit("10 per 10 minutes")
+@app.route('/api/auth/login', methods=['POST'])
+def login():
+    # 限制登录频率：每个IP 10 次 / 10 分钟（通过装饰器在后面配置）
+    data = request.get_json() or {}
+    username = (data.get('username') or '').strip()
+    password = data.get('password') or ''
+    if not username or not password:
+        return jsonify({'msg': 'username and password required'}), 400
+    user = User.query.filter_by(username=username).first()
+    if not user or not user.check_password(password):
+        return jsonify({'msg': 'invalid credentials'}), 401
+    access_token = create_access_token(identity=user.id)
+    return jsonify({'access_token': access_token, 'username': user.username}), 200
+
+
+# ---------- 历史记录接口 ----------
+@app.route('/api/history', methods=['GET'])
+@jwt_required()
+def list_history():
+    user_id = get_jwt_identity()
+    records = History.query.filter_by(user_id=user_id).order_by(History.created_at.desc()).all()
+    return jsonify([{
+        'id': r.id,
+        'prompt': r.prompt,
+        'storage_provider': r.storage_provider,
+        'storage_path': r.storage_path,
+        'preview_path': r.preview_path,
+        'created_at': r.created_at.isoformat()
+    } for r in records])
+
+
+@app.route('/api/history', methods=['POST'])
+@jwt_required()
+def create_history():
+    user_id = get_jwt_identity()
+    data = request.get_json() or {}
+    prompt = data.get('prompt')
+    storage_provider = data.get('storage_provider', 'local')
+    storage_path = data.get('storage_path')
+    preview_path = data.get('preview_path')
+    h = History(user_id=user_id, prompt=prompt, storage_provider=storage_provider, storage_path=storage_path, preview_path=preview_path)
+    db.session.add(h)
+    db.session.commit()
+    return jsonify({'id': h.id}), 201
+
+
+@app.route('/api/history/<int:hid>', methods=['DELETE'])
+@jwt_required()
+def delete_history(hid):
+    user_id = get_jwt_identity()
+    h = History.query.get_or_404(hid)
+    if h.user_id != user_id:
+        return jsonify({'msg': 'forbidden'}), 403
+    db.session.delete(h)
+    db.session.commit()
+    return jsonify({'msg': 'deleted'})
+
+
+@app.route('/api/history/download/<int:hid>')
+@jwt_required()
+def download_history(hid):
+    user_id = get_jwt_identity()
+    h = History.query.get_or_404(hid)
+    if h.user_id != user_id:
+        return jsonify({'msg': 'forbidden'}), 403
+    # 根据存储提供者获取并返回文件
+    if not h.storage_path:
+        return jsonify({'msg': 'no model stored'}), 404
+    try:
+        if h.storage_provider == 'local' or STORAGE_PROVIDER == 'local':
+            file_path = h.storage_path
+            if not os.path.isabs(file_path):
+                file_path = os.path.join(LOCAL_STORAGE_DIR, file_path)
+            if not os.path.exists(file_path):
+                return jsonify({'msg': 'file not found'}), 404
+            def generate():
+                with open(file_path, 'rb') as f:
+                    for chunk in iter(lambda: f.read(4096), b''):
+                        yield chunk
+            return Response(generate(), content_type='application/octet-stream')
+        elif h.storage_provider == 'cos' and cos_client:
+            # 从 COS 获取对象并流式返回
+            key = h.storage_path
+            resp = cos_client.get_object(Bucket=COS_BUCKET, Key=key)
+            body = resp['Body'].get_raw_stream()
+            return Response(body, content_type=resp.get('ContentType', 'application/octet-stream'))
+        else:
+            return jsonify({'msg': 'unsupported storage provider'}), 500
+    except Exception as e:
+        print('download proxy error', e)
+        return jsonify({'msg': 'error fetching model'}), 500
 
 # 读取腾讯云API密钥（从环境变量中获取）
 TENCENT_SECRET_ID = os.getenv("TENCENT_SECRET_ID")
@@ -161,8 +381,80 @@ def generate_3d_model_with_hunyuan(prompt, image_data=None):
         return None
 
 
-# 处理前端生成请求的API路由
+def _download_file_to_local(url, dest_path, max_bytes=None):
+    try:
+        r = requests.get(url, stream=True, timeout=30)
+        if r.status_code != 200:
+            return False, f'status {r.status_code}'
+        total = 0
+        with open(dest_path, 'wb') as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
+                    total += len(chunk)
+                    if max_bytes and total > max_bytes:
+                        return False, 'file too large'
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
+
+def save_model_to_storage(model_url, preview_url=None):
+    """下载 model_url（和 preview_url 可选），并保存到 STORAGE_PROVIDER 指定的位置。
+    返回 (provider, storage_path, preview_path)
+    """
+    # 生成文件名基于时间戳
+    ts = int(time.time())
+    model_filename = f'model_{ts}.glb'
+    preview_filename = f'preview_{ts}.jpg'
+
+    if STORAGE_PROVIDER == 'local' or not cos_client:
+        model_rel = model_filename
+        model_path = os.path.join(LOCAL_STORAGE_DIR, model_rel)
+        ok, err = _download_file_to_local(model_url, model_path, max_bytes=200*1024*1024)
+        if not ok:
+            return 'local', None, None
+        preview_rel = None
+        if preview_url:
+            preview_rel = preview_filename
+            preview_path = os.path.join(LOCAL_STORAGE_DIR, preview_rel)
+            _download_file_to_local(preview_url, preview_path, max_bytes=5*1024*1024)
+        return 'local', model_rel, (preview_rel or None)
+    else:
+        # 上传到 COS
+        try:
+            # 下载到临时本地文件，然后上传
+            tmp_model = os.path.join(LOCAL_STORAGE_DIR, model_filename)
+            ok, err = _download_file_to_local(model_url, tmp_model, max_bytes=500*1024*1024)
+            if not ok:
+                return 'cos', None, None
+            key = f'uploads/{model_filename}'
+            with open(tmp_model, 'rb') as f:
+                cos_client.put_object(Bucket=COS_BUCKET, Body=f, Key=key)
+            preview_key = None
+            if preview_url:
+                tmp_preview = os.path.join(LOCAL_STORAGE_DIR, preview_filename)
+                _download_file_to_local(preview_url, tmp_preview, max_bytes=10*1024*1024)
+                with open(tmp_preview, 'rb') as pf:
+                    preview_key = f'uploads/{preview_filename}'
+                    cos_client.put_object(Bucket=COS_BUCKET, Body=pf, Key=preview_key)
+            # 清理临时文件
+            try:
+                os.remove(tmp_model)
+                if preview_url:
+                    os.remove(tmp_preview)
+            except Exception:
+                pass
+            return 'cos', key, (preview_key or None)
+        except Exception as e:
+            print('cos upload failed', e)
+            return 'cos', None, None
+
+
+# 处理前端生成请求的API路由（需要登录）
 @app.route('/api/generate', methods=['POST'])
+@jwt_required()
+@limiter.limit("5 per 10 minutes")
 def handle_generation_request():
     print("========================================")
     print("接收到新的生成请求！")
@@ -244,6 +536,20 @@ def handle_generation_request():
     result_data = generate_3d_model_with_hunyuan(final_prompt, image_data)
     if result_data and result_data.get("modelUrl"):
         print("模型生成成功，返回结果给前端")
+        # 将模型下载并转存到配置的存储
+        try:
+            provider, storage_path, preview_path = save_model_to_storage(result_data.get('modelUrl'), result_data.get('previewImageUrl'))
+            user_id = None
+            try:
+                user_id = get_jwt_identity()
+            except Exception:
+                user_id = None
+            h = History(user_id=user_id or None, prompt=(final_prompt or text_input or ''), storage_provider=provider, storage_path=(storage_path or result_data.get('modelUrl')), preview_path=(preview_path or result_data.get('previewImageUrl')))
+            db.session.add(h)
+            db.session.commit()
+        except Exception as e:
+            print("保存历史记录失败:", e)
+        # 返回前端原始的临时URL（前端仍通过代理加载）
         return jsonify({
             "status": "success",
             "message": "模型生成成功！",

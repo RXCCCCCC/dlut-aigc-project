@@ -214,3 +214,89 @@ dut-aigc-project/
 1. 如果遇到跨域问题，请检查前端[vite.config.js](file:///e:/practice/dut-aigc-project/frontend/vite.config.js)中的代理配置
 2. 如果3D模型无法加载，请检查后端代理服务是否正常运行
 3. 如果生成失败，请检查腾讯云API密钥配置是否正确
+ 
+## 在阿里云 ECS 上使用 SQLite（推荐部署步骤）
+
+如果你在阿里云 ECS（或类似的 Linux 服务器）上部署本项目，并且希望继续使用 SQLite 作为数据库，下面是推荐的安全与稳定配置步骤。
+
+> 注意：SQLite 适用于轻量级或低并发场景；若并发写入较多，建议迁移到 MySQL/Postgres（可使用 RDS 服务）。
+
+1) 选择数据库文件位置（建议使用绝对路径）
+
+   推荐把数据库文件放在一个独立的数据目录，例如：`/var/www/dlut-aigc-project/data/data.db`，避免与应用代码混淆。
+
+2) 在服务器上创建目录并设置权限
+
+```bash
+sudo mkdir -p /var/www/dlut-aigc-project/data
+# 将目录所有权改为用于运行应用的用户（例如 `www-data` 或 `myappuser`）
+sudo chown -R myappuser:myappuser /var/www/dlut-aigc-project/data
+sudo chmod 700 /var/www/dlut-aigc-project/data
+```
+
+3) 设置环境变量（示例：bash）
+
+```bash
+# 指定 sqlite 文件（优先级高于默认配置）
+export SQLITE_FILE=/var/www/dlut-aigc-project/data/data.db
+
+# 也可以直接指定完整的 SQLAlchemy DATABASE_URL
+export DATABASE_URL="sqlite:////var/www/dlut-aigc-project/data/data.db"
+
+# 其它必须的 env 例如：
+export JWT_SECRET_KEY="替换为生产用的强随机字符串"
+export TENCENT_SECRET_ID="..."
+export TENCENT_SECRET_KEY="..."
+```
+
+在 `app.py` 中已实现：优先使用 `DATABASE_URL`，若未设置则使用 `SQLITE_FILE`，并会在启动时自动创建数据库目录（如果未存在）。
+
+4) 在受控的 systemd 服务中运行（示例 unit）
+
+创建 `/etc/systemd/system/dlut-aigc.service`：
+
+```ini
+[Unit]
+Description=DLUT AIGC Backend
+After=network.target
+
+[Service]
+User=myappuser
+Group=myappuser
+WorkingDirectory=/var/www/dlut-aigc-project/backend
+Environment="PATH=/var/www/dlut-aigc-project/backend/.venv/bin"
+Environment="DATABASE_URL=sqlite:////var/www/dlut-aigc-project/data/data.db"
+Environment="JWT_SECRET_KEY=replace-with-strong-secret"
+ExecStart=/var/www/dlut-aigc-project/backend/.venv/bin/gunicorn -w 4 -b 0.0.0.0:5000 app:app
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+然后启用并启动服务：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable dlut-aigc.service
+sudo systemctl start dlut-aigc.service
+sudo journalctl -u dlut-aigc.service -f
+```
+
+5) 常见问题与建议
+
+- 确保 `myappuser` 对 `data` 目录有写权限，否则 SQLite 无法创建或写入数据库文件。
+- 如果你在容器（Docker）或负载均衡后端运行多个实例，SQLite 会成为瓶颈或导致锁冲突，建议迁移到 MySQL/Postgres 并使用云数据库服务。
+- 如果你需要备份数据，定期拷贝 `data.db` 文件或使用 `sqlite3 .dump` 导出 SQL。
+
+6) 可选：把 SQLite 切换为 MySQL/Postgres（最少改动）
+
+只需在环境变量中将 `DATABASE_URL` 设置为适当的 SQLAlchemy 连接字符串，例如：
+
+```bash
+export DATABASE_URL="postgresql+psycopg2://user:password@hostname:5432/dbname"
+```
+
+并安装对应驱动（`psycopg2-binary` 或 `mysqlclient`），应用模型代码无需改动。
+
+如果你希望我把部署说明加入 README 的“快速部署”或生成一个 `systemd` 单元文件到仓库中，我可以继续为你生成并提交这些变更。

@@ -1,0 +1,17 @@
+[Unit]
+Description=DLUT AIGC Backend
+After=network.target
+
+[Service]
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/dlut-aigc-project/backend
+Environment="PATH=/var/www/dlut-aigc-project/backend/.venv/bin"
+Environment="DATABASE_URL=sqlite:////var/www/dlut-aigc-project/data/data.db"
+Environment="JWT_SECRET_KEY=replace-with-strong-secret"
+ExecStart=/var/www/dlut-aigc-project/backend/.venv/bin/gunicorn -w 4 -b 0.0.0.0:5000 app:app
+Restart=on-failure
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
